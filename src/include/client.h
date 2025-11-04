@@ -131,7 +131,7 @@ void Decide() {
   // Strategy 2: Mark obvious mines (all unknown neighbors are mines)
   for (int i = 0; i < rows; i++) {
     for (int j = 0; j < columns; j++) {
-      if (is_visited_client[i][j] && mine_count_client[i][j] > 0) {
+      if (is_visited_client[i][j] && mine_count_client[i][j] >= 0) {
         int unknown_count = 0;
         int marked_count = 0;
         std::vector<std::pair<int, int>> unknown_cells;
@@ -186,7 +186,90 @@ void Decide() {
     }
   }
 
-  // Strategy 4: Advanced logical deduction using constraint satisfaction
+  // Strategy 4: Advanced pattern matching - subset/superset relationships
+  // Find pairs of constraints where one is a subset of another
+  for (int i1 = 0; i1 < rows; i1++) {
+    for (int j1 = 0; j1 < columns; j1++) {
+      if (!is_visited_client[i1][j1] || mine_count_client[i1][j1] < 0) continue;
+
+      // Get unknown neighbors of cell 1
+      std::set<std::pair<int, int>> unknown1;
+      int marked1 = 0;
+      for (int k = 0; k < 8; k++) {
+        int ni = i1 + dr[k];
+        int nj = j1 + dc[k];
+        if (ni >= 0 && ni < rows && nj >= 0 && nj < columns) {
+          if (visible_map[ni][nj] == '?') {
+            unknown1.insert({ni, nj});
+          } else if (is_marked_client[ni][nj]) {
+            marked1++;
+          }
+        }
+      }
+
+      if (unknown1.empty()) continue;
+      int remaining1 = mine_count_client[i1][j1] - marked1;
+
+      // Compare with other constraints
+      for (int i2 = 0; i2 < rows; i2++) {
+        for (int j2 = 0; j2 < columns; j2++) {
+          if (i1 == i2 && j1 == j2) continue;
+          if (!is_visited_client[i2][j2] || mine_count_client[i2][j2] < 0) continue;
+
+          // Get unknown neighbors of cell 2
+          std::set<std::pair<int, int>> unknown2;
+          int marked2 = 0;
+          for (int k = 0; k < 8; k++) {
+            int ni = i2 + dr[k];
+            int nj = j2 + dc[k];
+            if (ni >= 0 && ni < rows && nj >= 0 && nj < columns) {
+              if (visible_map[ni][nj] == '?') {
+                unknown2.insert({ni, nj});
+              } else if (is_marked_client[ni][nj]) {
+                marked2++;
+              }
+            }
+          }
+
+          if (unknown2.empty()) continue;
+          int remaining2 = mine_count_client[i2][j2] - marked2;
+
+          // Check if unknown1 is a subset of unknown2
+          bool is_subset = true;
+          for (auto cell : unknown1) {
+            if (unknown2.find(cell) == unknown2.end()) {
+              is_subset = false;
+              break;
+            }
+          }
+
+          if (is_subset && unknown1.size() < unknown2.size()) {
+            // unknown1 ⊆ unknown2
+            // If remaining1 == remaining2, then unknown2 - unknown1 are all safe
+            if (remaining1 == remaining2) {
+              for (auto [r, c] : unknown2) {
+                if (unknown1.find({r, c}) == unknown1.end()) {
+                  Execute(r, c, 0);
+                  return;
+                }
+              }
+            }
+            // If remaining2 - remaining1 == |unknown2| - |unknown1|, then unknown2 - unknown1 are all mines
+            if (remaining2 - remaining1 == (int)(unknown2.size() - unknown1.size())) {
+              for (auto [r, c] : unknown2) {
+                if (unknown1.find({r, c}) == unknown1.end()) {
+                  Execute(r, c, 1);
+                  return;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Strategy 5: Advanced logical deduction using constraint satisfaction
   // Build a list of all constraints (visited cells with their mine counts)
   std::vector<std::pair<int, int>> constraints;
   for (int i = 0; i < rows; i++) {
