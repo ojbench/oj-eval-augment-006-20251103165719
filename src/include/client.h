@@ -383,7 +383,6 @@ void Decide() {
     for (auto [r, c] : unknown_cells) {
       double mine_prob = 0.0;
       int neighbor_count = 0;
-      int total_info = 0;  // How much information we have about this cell
 
       for (int k = 0; k < 8; k++) {
         int ni = r + dr[k];
@@ -391,7 +390,6 @@ void Decide() {
         if (ni >= 0 && ni < rows && nj >= 0 && nj < columns &&
             is_visited_client[ni][nj] && mine_count_client[ni][nj] >= 0) {
           neighbor_count++;
-          total_info++;
 
           int marked = 0;
           int unknown = 0;
@@ -416,17 +414,10 @@ void Decide() {
       if (neighbor_count > 0) {
         mine_prob /= neighbor_count;
       } else {
-        // Unknown area
-        mine_prob = (double)total_mines / (rows * columns);
+        mine_prob = 0.5;  // Unknown area
       }
 
-      // Prefer cells with more information (more visited neighbors)
-      // and lower mine probability
-      // Use a combined score: mine_prob - 0.01 * total_info
-      // This slightly prefers cells with more information
-      double score = mine_prob - 0.01 * total_info;
-
-      scored_cells.push_back({score, {r, c}});
+      scored_cells.push_back({mine_prob, {r, c}});
     }
 
     std::sort(scored_cells.begin(), scored_cells.end());
