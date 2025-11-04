@@ -186,8 +186,30 @@ void Decide() {
     }
   }
 
-  // Strategy 4: Advanced logical deduction
-  // Find cells that can be deduced as safe or mines through constraint satisfaction
+  // Strategy 4: Advanced logical deduction using constraint satisfaction
+  // Build a list of all constraints (visited cells with their mine counts)
+  std::vector<std::pair<int, int>> constraints;
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < columns; j++) {
+      if (is_visited_client[i][j] && mine_count_client[i][j] >= 0) {
+        // Check if this constraint has unknown neighbors
+        bool has_unknown = false;
+        for (int k = 0; k < 8; k++) {
+          int ni = i + dr[k];
+          int nj = j + dc[k];
+          if (ni >= 0 && ni < rows && nj >= 0 && nj < columns && visible_map[ni][nj] == '?') {
+            has_unknown = true;
+            break;
+          }
+        }
+        if (has_unknown) {
+          constraints.push_back({i, j});
+        }
+      }
+    }
+  }
+
+  // Try to find cells that can be deduced using constraint satisfaction
   std::vector<std::pair<int, int>> unknown_cells;
   for (int i = 0; i < rows; i++) {
     for (int j = 0; j < columns; j++) {
@@ -197,47 +219,74 @@ void Decide() {
     }
   }
 
-  // Try to find a safe cell using constraint propagation
+  // For each unknown cell, check if it can be deduced
   for (auto [r, c] : unknown_cells) {
     bool definitely_safe = false;
     bool definitely_mine = false;
 
-    // Check all visited neighbors
-    std::vector<std::pair<int, int>> visited_neighbors;
-    for (int k = 0; k < 8; k++) {
-      int ni = r + dr[k];
-      int nj = c + dc[k];
-      if (ni >= 0 && ni < rows && nj >= 0 && nj < columns &&
-          is_visited_client[ni][nj] && mine_count_client[ni][nj] >= 0) {
-        visited_neighbors.push_back({ni, nj});
+    // Get all constraints that involve this cell
+    std::vector<std::pair<int, int>> relevant_constraints;
+    for (auto [ci, cj] : constraints) {
+      for (int k = 0; k < 8; k++) {
+        int ni = ci + dr[k];
+        int nj = cj + dc[k];
+        if (ni == r && nj == c) {
+          relevant_constraints.push_back({ci, cj});
+          break;
+        }
       }
     }
 
-    // Check if this cell must be safe or mine based on constraints
-    for (auto [vi, vj] : visited_neighbors) {
+    // Check if all constraints agree that this cell is safe
+    bool all_safe = true;
+    bool all_mine = true;
+
+    for (auto [ci, cj] : relevant_constraints) {
       int marked_count = 0;
       int unknown_count = 0;
+      std::vector<std::pair<int, int>> unknown_neighbors;
 
       for (int k = 0; k < 8; k++) {
-        int ni = vi + dr[k];
-        int nj = vj + dc[k];
+        int ni = ci + dr[k];
+        int nj = cj + dc[k];
         if (ni >= 0 && ni < rows && nj >= 0 && nj < columns) {
           if (is_marked_client[ni][nj]) {
             marked_count++;
           } else if (visible_map[ni][nj] == '?') {
             unknown_count++;
+            unknown_neighbors.push_back({ni, nj});
           }
         }
       }
 
-      // If all mines are already marked, this cell is safe
-      if (marked_count == mine_count_client[vi][vj]) {
-        definitely_safe = true;
-        break;
+      int remaining_mines = mine_count_client[ci][cj] - marked_count;
+
+      // If all remaining unknown cells must be mines
+      if (remaining_mines == unknown_count && unknown_count > 0) {
+        // This cell must be a mine
+        if (all_mine) {
+          definitely_mine = true;
+        }
+      } else {
+        all_mine = false;
+      }
+
+      // If all mines are already marked
+      if (remaining_mines == 0) {
+        // This cell must be safe
+        if (all_safe) {
+          definitely_safe = true;
+        }
+      } else {
+        all_safe = false;
       }
     }
 
-    if (definitely_safe) {
+    if (definitely_mine && !definitely_safe) {
+      Execute(r, c, 1);
+      return;
+    }
+    if (definitely_safe && !definitely_mine) {
       Execute(r, c, 0);
       return;
     }
